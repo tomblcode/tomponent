@@ -1,0 +1,28 @@
+{
+  "name": "tomponent",
+  "version": "0.0.1",
+  "description": "A simple and modern component library leveraging web-components and shadow-dom",
+  "main": "lib/index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "dependencies": {
+    "tslint": "^5.11.0",
+    "typescript": "^3.1.6"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/tomblcode/tomponent"
+  },
+  "keywords": [
+    "web-components",
+    "component",
+    "jsx"
+  ],
+  "author": "tomblcode",
+  "license": "MIT"
+}
