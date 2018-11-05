@@ -1,11 +1,13 @@
 import * as t from "./index.js";
 
+t.use(t.plugins.state);
+
 t.Component("a-bc", data => {
-  const state = data.createState("styledata", {
+  const state = data.state.get("styledata", {
     bg: "#eeeeee",
     renders: 0
   });
-  const renderlessState = data.createState("styledata", {}, false);
+  const renderlessState = data.state.get("styledata", {}, false);
   (window as any).bg = (newBg: string) => {
     state.bg = newBg;
   };
@@ -20,8 +22,9 @@ t.Component("a-bc", data => {
     user-select: none;`}
       onclick={() => data.rerender()}
     >
-      Test
+      {data.props.prefix}
       {state.renders}
+      <div style={{backgroundColor: "white", border: "1px dashed gray"}}>{data.children}</div>
     </p>
   );
 });
