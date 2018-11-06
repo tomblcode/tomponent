@@ -1,7 +1,10 @@
+import "@webcomponents/webcomponentsjs/webcomponents-bundle";
+const declaredComponents: string[] = [];
+const CUSTOM_ELEMENT_PREFIX = "tomponent-";
 export interface IPlugin {
   name: string;
-  data?: { [name: string]: any };
-  init?(elementData: IComponentDataType): void;
+  data?: (plugin: IPlugin, element: HTMLElement) => any;
+  oncreate?(elementData: IComponentDataType): void;
   onrender?(
     element: HTMLElement | HTMLElement[]
   ): HTMLElement | HTMLElement[] | void;
@@ -27,23 +30,35 @@ declare global {
   }
 }
 
-export function use(plugin: IPlugin): void {
-  usedPlugins.push(plugin);
+export function use(plugin?: IPlugin): void {
+  if (plugin === undefined) {
+    Object.keys(plugins).forEach(name => {
+      use(plugins[name]);
+    });
+  } else {
+    usedPlugins.push(plugin);
+  }
 }
 
 export function createElement(
-  elementName: string,
+  name: string,
   props: { [name: string]: any } | null,
   ...children: Array<Node | string>
 ): HTMLElement {
+  if (declaredComponents.includes(name)) {
+    name = CUSTOM_ELEMENT_PREFIX + name;
+  }
   if (props == null) {
     props = {};
   }
-  const element = document.createElement(elementName);
+  const element = document.createElement(name);
   Object.keys(props).forEach(propName => {
     handleProp(propName, props![propName], element);
   });
   children.forEach(child => {
+    if (!child) {
+      return;
+    }
     if (typeof child !== "object") {
       child = document.createTextNode(child);
     }
@@ -60,16 +75,21 @@ export function createElement(
 
 interface IComponentDataType {
   props: { [name: string]: any };
-  on: (event: string, callback: (event: Event) => void) => void;
   rerender: () => void;
   children: Node[];
+  once: <Return>(run: () => Return) => Return;
   [name: string]: any;
 }
 
 export function Component(
   name: string,
-  component: (data: IComponentDataType) => HTMLElement | HTMLElement[]
+  component: (data: IComponentDataType) => HTMLElement | HTMLElement[],
+  autoPrefix: boolean = true
 ) {
+  if (autoPrefix || name.indexOf("-") >= 0) {
+    declaredComponents.push(name);
+    name = CUSTOM_ELEMENT_PREFIX + name;
+  }
   customElements.define(
     name,
     class extends HTMLElement {
@@ -77,12 +97,21 @@ export function Component(
         const self: HTMLElement = super() as any;
         const shadow = this.attachShadow({ mode: "open" });
         const thisPlugins: IPlugin[] = [];
+        const runOnce: string[] = [];
+        const runOnceReturns: any[] = [];
         let element: HTMLElement | HTMLElement[];
         let data: IComponentDataType = {
           children: [...self.childNodes] as Node[],
           props: {},
-          on(event, callback) {
-            self.addEventListener(event, callback);
+          once(run) {
+            if (!runOnce.includes(run.toString())) {
+              const returned = run();
+              runOnce.push(run.toString());
+              runOnceReturns.push(returned);
+              return returned;
+            } else {
+              return runOnceReturns[runOnce.indexOf(run.toString())];
+            }
           },
           rerender() {
             if (element !== undefined) {
@@ -95,7 +124,7 @@ export function Component(
               }
             }
             element = component(data);
-            usedPlugins.forEach(plugin => {
+            thisPlugins.forEach(plugin => {
               if (typeof plugin.onrender === "function") {
                 const returned = plugin.onrender!(element);
                 if (
@@ -118,18 +147,18 @@ export function Component(
             }
           }
         };
-        usedPlugins.forEach((plugin, i) => {
-          thisPlugins[i] = { ...plugin };
-          if (typeof plugin.init === "function") {
-            thisPlugins[i].init!(data);
-          }
-        });
         [...self.attributes].forEach(attribute => {
           data.props[attribute.name] = attribute.value;
         });
-        usedPlugins.forEach(plugin => {
+        usedPlugins.forEach((plugin, i) => {
+          thisPlugins[i] = { ...plugin };
+          if (typeof plugin.oncreate === "function") {
+            thisPlugins[i].oncreate!(data);
+          }
+        });
+        thisPlugins.forEach(plugin => {
           if (plugin.data !== undefined) {
-            data = { [plugin.name]: plugin.data, ...data };
+            data = { [plugin.name]: plugin.data(plugin, self), ...data };
           }
         });
         data.rerender();
@@ -139,44 +168,106 @@ export function Component(
 }
 
 export const plugins: { [name: string]: IPlugin } = {
-  state: {
-    init({ rerender }) {
-      this.data!.states = {};
-      this.data!.rerender = rerender;
-    },
-    data: {
-      get(
-        storeName: string,
-        defaultValue: { [name: string]: any },
-        causesRerender = true
-      ): { [name: string]: any } {
-        const rerender = this.rerender;
-        if (this.states[storeName] === undefined) {
-          this.states[storeName] = defaultValue;
+  events: {
+    data(plugin, element) {
+      return (
+        eventName: string,
+        specialOrCallback: string | number,
+        callback?: (event: Event) => void
+      ) => {
+        if (
+          plugin.events.includes(
+            [
+              eventName,
+              specialOrCallback.toString(),
+              (callback == null ? "" : callback).toString()
+            ].join(",HOPEFULLY_UNIQUE_SEPARATOR,")
+          )
+        ) {
+          return;
+        } else {
+          plugin.events.push(
+            [
+              eventName,
+              specialOrCallback.toString(),
+              (callback == null ? "" : callback).toString()
+            ].join(",HOPEFULLY_UNIQUE_SEPARATOR,")
+          );
         }
-        return new Proxy(this.states[storeName], {
-          get(target, prop) {
-            return target[prop];
-          },
-          set(target, prop: string, value) {
-            if (target[prop] === value) {
+        let special: string | number | undefined;
+        if (typeof specialOrCallback === "function") {
+          callback = specialOrCallback;
+        } else {
+          special = specialOrCallback;
+        }
+        if (special !== undefined) {
+          element.addEventListener(eventName, event => {
+            if (event instanceof KeyboardEvent) {
+              // tslint:disable-next-line:triple-equals // so that you can specify type number for number key
+              if (event.key == special) {
+                callback!(event);
+              }
+            } else if (event instanceof MouseEvent) {
+              if (event.button === special) {
+                callback!(event);
+              }
+            } else {
+              throw new Error(
+                `No known special action for event type ${event
+                  .toString()
+                  .slice(8, -1)}`
+              );
+            }
+          });
+        } else {
+          element.addEventListener(eventName, callback!);
+        }
+      };
+    },
+    events: [],
+    name: "on"
+  },
+  state: {
+    oncreate({ rerender }) {
+      this.states = {};
+      this.rerender = rerender;
+    },
+    data(plugin) {
+      return {
+        get(
+          storeName: string,
+          defaultValue: { [name: string]: any },
+          causesRerender = true
+        ): { [name: string]: any } {
+          if (plugin.states[storeName] === undefined) {
+            plugin.states[storeName] = defaultValue;
+          }
+          return new Proxy(plugin.states[storeName], {
+            get(target, prop) {
+              return target[prop];
+            },
+            set(target, prop: string, value) {
+              if (target[prop] === value) {
+                return true;
+              }
+              target[prop] = value;
+              if (causesRerender) {
+                plugin.rerender();
+              }
               return true;
             }
-            target[prop] = value;
-            if (causesRerender) {
-              rerender();
-            }
-            return true;
-          }
-        });
-      },
-      set(storeName: string, newState: { [name: string]: any }) {
-        this.states[storeName] = newState;
-        this.rerender();
-        return this.states[storeName];
-      }
+          });
+        },
+        set(storeName: string, newState: { [name: string]: any }) {
+          plugin.states[storeName] = newState;
+          plugin.rerender();
+          return plugin.states[storeName];
+        }
+      };
     },
-    name: "state"
+    name: "state",
+    rerender: undefined,
+    states: {}
   }
 };
 
