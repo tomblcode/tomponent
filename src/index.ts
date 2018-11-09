@@ -1,6 +1,5 @@
 import "@webcomponents/webcomponentsjs/webcomponents-bundle";
 const declaredComponents: string[] = [];
-const CUSTOM_ELEMENT_PREFIX = "tomponent-";
 export interface IPlugin {
   name: string;
   data?: (plugin: IPlugin, element: HTMLElement) => any;
@@ -18,6 +17,8 @@ function handleProp(name: string, prop: any, element: HTMLElement) {
     Object.keys(prop).forEach(styleName => {
       (element.style as any)[styleName] = prop[styleName];
     });
+  } else {
+    element.setAttribute(name, prop);
   }
 }
 
@@ -28,6 +29,27 @@ declare global {
       [elemName: string]: any;
     }
   }
+}
+
+function encodeElementName(name: string): string {
+  name = name.replace(/\//g, "-slash-");
+  name = name.replace(/\?/g, "-question-");
+  name = name.replace(/\!/g, "-exclamation-");
+  name = name.replace(/\@/g, "-at-");
+  name = name.replace(/\#/g, "-hash-");
+  name = name.replace(/\$/g, "-dollar-");
+  name = name.replace(/\%/g, "-percent-");
+  name = name.replace(/\^/g, "-caret-");
+  name = name.replace(/\&/g, "-ampersand-");
+  name = name.replace(/\(/g, "-bracket-open-");
+  name = name.replace(/\)/g, "-bracket-close-");
+  name = name.replace(/\*/g, "-asterisk-");
+  name = name.replace(/\=/g, "-equals-");
+  name = name.replace(/\+/g, "-plus-");
+  if (name.indexOf("-") === -1) {
+    name = "component-" + name;
+  }
+  return name;
 }
 
 export function use(plugin?: IPlugin): void {
@@ -45,16 +67,19 @@ export function createElement(
   props: { [name: string]: any } | null,
   ...children: Array<Node | string>
 ): HTMLElement {
-  if (declaredComponents.includes(name)) {
-    name = CUSTOM_ELEMENT_PREFIX + name;
-  }
+  let element: HTMLElement;
   if (props == null) {
     props = {};
   }
-  const element = document.createElement(name);
-  Object.keys(props).forEach(propName => {
-    handleProp(propName, props![propName], element);
-  });
+  if (declaredComponents.includes(name)) {
+    name = encodeElementName(name);
+    element = new (customElements.get(name))(props);
+  } else {
+    element = document.createElement(name);
+    Object.keys(props).forEach(propName => {
+      handleProp(propName, props![propName], element);
+    });
+  }
   children.forEach(child => {
     if (!child) {
       return;
@@ -73,7 +98,7 @@ export function createElement(
   return element;
 }
 
-interface IComponentDataType {
+export interface IComponentDataType {
   props: { [name: string]: any };
   rerender: () => void;
   children: Node[];
@@ -83,17 +108,15 @@ interface IComponentDataType {
 
 export function Component(
   name: string,
-  component: (data: IComponentDataType) => HTMLElement | HTMLElement[],
-  autoPrefix: boolean = true
-) {
-  if (autoPrefix || name.indexOf("-") >= 0) {
-    declaredComponents.push(name);
-    name = CUSTOM_ELEMENT_PREFIX + name;
-  }
+  component: (data: IComponentDataType) => HTMLElement | HTMLElement[]
+): string {
+  declaredComponents.push(name);
+  name = encodeElementName(name);
   customElements.define(
     name,
     class extends HTMLElement {
-      constructor() {
+      protected rerender: () => void;
+      constructor(props: { [name: string]: any }) {
         const self: HTMLElement = super() as any;
         const shadow = this.attachShadow({ mode: "open" });
         const thisPlugins: IPlugin[] = [];
@@ -123,6 +146,13 @@ export function Component(
                 shadow.removeChild(element);
               }
             }
+            if (props === undefined) {
+              [...self.attributes].forEach(attribute => {
+                data.props[attribute.name] = attribute.value;
+              });
+            } else {
+              data.props = props;
+            }
             element = component(data);
             thisPlugins.forEach(plugin => {
               if (typeof plugin.onrender === "function") {
@@ -147,9 +177,6 @@ export function Component(
             }
           }
         };
-        [...self.attributes].forEach(attribute => {
-          data.props[attribute.name] = attribute.value;
-        });
         usedPlugins.forEach((plugin, i) => {
           thisPlugins[i] = { ...plugin };
           if (typeof plugin.oncreate === "function") {
@@ -161,10 +188,12 @@ export function Component(
             data = { [plugin.name]: plugin.data(plugin, self), ...data };
           }
         });
+        this.rerender = data.rerender;
         data.rerender();
       }
     }
   );
+  return name;
 }
 
 export const plugins: { [name: string]: IPlugin } = {

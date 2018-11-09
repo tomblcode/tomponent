@@ -21,8 +21,8 @@ Or if using [TypeScript](https://typescriptlang.org), add this to your `tsconfig
 3. Done!
 
 ## API
-### `Component(`*`name`*`, `*`data => <element />`*`, `*`[autoPrefix]`*`)`
-By default, names of components must contain a dash, and so if `autoPrefix` is `true` or omitted, and the name doesn't contain a dash, prefixes the name with `tomponent-`. ***(This does not effect the usage, as the JSX automatically gets prefixed for the required components)***
+### `Component(`*`name, data => <element />`*`)`
+***Note: component names follow a strict set of rules, so the creation of elements as well as JSX usage are automatically fixed, but usage from the DOM may not work 100% as expected***
 
 The component function returns a HTML element, typically created with JSX, and takes a data object that is extendible by plugins, but contains the following by default:
 
