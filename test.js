@@ -193,7 +193,7 @@ async function setTest(browser, name, passed) {
   app.listen(port);
   const browser = await puppeteer.launch({
     headless: false,
-    args: ["--window-size=800,600"]
+    args: ["--window-size=800,600", "--no-sandbox"] // has to be done to run on TravisCI
   });
   await (await browser.pages())[0].goto(`localhost:${port}`);
   (await browser.pages())[0].on("close", process.exit);
