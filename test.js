@@ -174,16 +174,15 @@ async function setTest(browser, name, passed) {
       .filter(value => value !== null).length === Object.keys(ranTests).length
   ) {
     try {
-      console.log(
-        (await (await browser.pages())[0].evaluate(() => {
-          return document.body.innerText;
-        }))
-          .split("\n")
-          .filter(item => !!item)
-          .slice(0, 4)
-          .join("\n")
-      );
-      process.exit();
+      const text = (await (await browser.pages())[0].evaluate(() => {
+        return document.body.innerText;
+      }))
+        .split("\n")
+        .filter(item => !!item)
+        .slice(0, 4)
+        .join("\n");
+      console.log(text);
+      process.exit(text.split("\n")[1] === "Failed: 0" ? 0 : 1);
     } catch (e) {
       setTest(browser, name, passed);
     }
