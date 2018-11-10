@@ -13,7 +13,7 @@ const usedPlugins: IPlugin[] = [];
 function handleProp(name: string, prop: any, element: HTMLElement) {
   if (name.slice(0, 2) === "on" && typeof prop === "function") {
     element.addEventListener(name.slice(2), prop);
-  } else if (name === "style") {
+  } else if (name === "style" && typeof prop === "object") {
     Object.keys(prop).forEach(styleName => {
       (element.style as any)[styleName] = prop[styleName];
     });
