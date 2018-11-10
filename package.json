@@ -1,6 +1,6 @@
 {
   "name": "tomponent",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A simple and modern component library leveraging web-components and shadow-dom",
   "main": "lib/index.js",
   "directories": {
