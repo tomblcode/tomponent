@@ -1,4 +1,4 @@
-# tomponent
+# tomponent [![Build Status](https://travis-ci.com/tomblcode/tomponent.svg?branch=master)](https://travis-ci.com/tomblcode/tomponent)
 
 An experimental, simple and modular component library leveraging new technologies like shadow DOM and web components.
 
