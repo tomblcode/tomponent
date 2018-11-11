@@ -9,13 +9,19 @@ const template = (name, html, js) => `
 </head>
 <body>
   <script>
-    ${function assert(bool) {
-      if (bool) {
-        console.log("TEST PASSED");
-      } else {
-        console.log("TEST FAILED");
-      }
-    }}
+    let asserts = 1;
+    let assert = (() => {
+      let doneasserts = 0;
+      ${function assert(bool) {
+        doneasserts++;
+        if (bool && asserts === doneasserts) {
+          console.log("TEST PASSED");
+        } else if (!bool) {
+          console.log("TEST FAILED");
+        }
+      }}
+      return assert;
+    })();
     ${function deepEqual(x, y) {
       // taken from https://stackoverflow.com/questions/201183/how-to-determine-equality-for-two-javascript-objects#32922084
       const ok = Object.keys,
@@ -26,9 +32,12 @@ const template = (name, html, js) => `
             ok(x).every(key => deepEqual(x[key], y[key]))
         : x === y;
     }}
+    onerror = () => {
+      assert(false);
+    }
   </script>
   <script>
-    ${js}  
+      ${js}
   </script>
   ${html}
 </body>
@@ -42,8 +51,8 @@ const webpack = require("thenify")(require("webpack"));
 const app = new (require("koa"))();
 const ranTests = {};
 app.use(async ctx => {
-  if (ctx.path.slice(0, 6) === "/test/") {
-    const test = decodeURIComponent(ctx.path.slice(6));
+  if (ctx.path.split("/")[1] === "test") {
+    const test = decodeURIComponent(ctx.path.slice(6).split("/")[0]);
     await webpack({
       mode: "production",
       entry: path.join(__dirname, "tests", test, "index.jsx"),
@@ -51,6 +60,7 @@ app.use(async ctx => {
         path: path.join(__dirname, "tests", test),
         filename: "bundle.js"
       },
+      devtool: "inline-source-map",
       module: {
         rules: [
           {
@@ -71,9 +81,12 @@ app.use(async ctx => {
         }
       }
     });
+
     ctx.body = template(
       test,
-      await fs.readFile(path.join(__dirname, "tests", test, "index.html")),
+      (await fs.exists(path.join(__dirname, "tests", test, "index.html")))
+        ? await fs.readFile(path.join(__dirname, "tests", test, "index.html"))
+        : "",
       await fs.readFile(path.join(__dirname, "tests", test, "bundle.js"))
     );
   } else if (ctx.path === "/") {
@@ -193,7 +206,8 @@ async function setTest(browser, name, passed) {
   app.listen(port);
   const browser = await puppeteer.launch({
     headless: false,
-    args: ["--window-size=800,600", "--no-sandbox"] // has to be done to run on TravisCI
+    args:
+      process.env.CI !== "true" ? ["--window-size=800,730"] : ["--no-sandbox"]
   });
   await (await browser.pages())[0].goto(`localhost:${port}`);
   (await browser.pages())[0].on("close", process.exit);
@@ -214,7 +228,7 @@ async function setTest(browser, name, passed) {
             } else {
               passed = false;
             }
-            await page.close();
+            if (true && passed) await page.close();
             await fs.unlink(path.join(__dirname, "tests", test, "bundle.js"));
             await setTest(browser, test, passed);
           }

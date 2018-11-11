@@ -65,43 +65,45 @@ export function use(plugin?: IPlugin): void {
 export function createElement(
   name: string,
   props: { [name: string]: any } | null,
-  ...children: Array<Node | string>
+  ...children: any[]
 ): HTMLElement {
   let element: HTMLElement;
   if (props == null) {
     props = {};
   }
   if (declaredComponents.includes(name)) {
-    name = encodeElementName(name);
-    element = new (customElements.get(name))(props);
+    element = new (customElements.get(encodeElementName(name)))(
+      props,
+      children
+    );
   } else {
     element = document.createElement(name);
     Object.keys(props).forEach(propName => {
       handleProp(propName, props![propName], element);
     });
+    children.forEach(child => {
+      if (!child) {
+        return;
+      }
+      if (typeof child !== "object") {
+        child = document.createTextNode(child);
+      }
+      if (Array.isArray(child)) {
+        child.forEach(deepChild => {
+          element.appendChild(deepChild);
+        });
+      } else {
+        element.appendChild(child);
+      }
+    });
   }
-  children.forEach(child => {
-    if (!child) {
-      return;
-    }
-    if (typeof child !== "object") {
-      child = document.createTextNode(child);
-    }
-    if (Array.isArray(child)) {
-      child.forEach(deepChild => {
-        element.appendChild(deepChild);
-      });
-    } else {
-      element.appendChild(child);
-    }
-  });
   return element;
 }
 
 export interface IComponentDataType {
   props: { [name: string]: any };
   rerender: () => void;
-  children: Node[];
+  children: any[];
   once: <Return>(run: () => Return) => Return;
   [name: string]: any;
 }
@@ -115,25 +117,30 @@ export function Component(
   customElements.define(
     name,
     class extends HTMLElement {
-      protected rerender: () => void;
-      constructor(props: { [name: string]: any }) {
+      constructor(props: { [name: string]: any }, children: any[]) {
         const self: HTMLElement = super() as any;
         const shadow = this.attachShadow({ mode: "open" });
         const thisPlugins: IPlugin[] = [];
-        const runOnce: string[] = [];
-        const runOnceReturns: any[] = [];
+        const alreadyRan: Array<{ function: string; returned: any }> = [];
         let element: HTMLElement | HTMLElement[];
         let data: IComponentDataType = {
-          children: [...self.childNodes] as Node[],
-          props: {},
-          once(run) {
-            if (!runOnce.includes(run.toString())) {
-              const returned = run();
-              runOnce.push(run.toString());
-              runOnceReturns.push(returned);
+          children,
+          props,
+          once(toRun) {
+            if (
+              !alreadyRan
+                .map(value => value.function)
+                .includes(toRun.toString())
+            ) {
+              const returned = toRun();
+              alreadyRan.push({ function: toRun.toString(), returned });
               return returned;
             } else {
-              return runOnceReturns[runOnce.indexOf(run.toString())];
+              return alreadyRan[
+                alreadyRan
+                  .map(value => value.function)
+                  .indexOf(toRun.toString())
+              ].returned;
             }
           },
           rerender() {
@@ -145,13 +152,6 @@ export function Component(
               } else {
                 shadow.removeChild(element);
               }
-            }
-            if (props === undefined) {
-              [...self.attributes].forEach(attribute => {
-                data.props[attribute.name] = attribute.value;
-              });
-            } else {
-              data.props = props;
             }
             element = component(data);
             thisPlugins.forEach(plugin => {
@@ -188,7 +188,6 @@ export function Component(
             data = { [plugin.name]: plugin.data(plugin, self), ...data };
           }
         });
-        this.rerender = data.rerender;
         data.rerender();
       }
     }
@@ -310,7 +309,10 @@ export function css(strings: TemplateStringsArray, ...inlines: any[]) {
   str
     .split(";")
     .map((s: string) => [
-      s.split(":")[0].trim(),
+      s
+        .split(":")[0]
+        .trim()
+        .toLowerCase(),
       s
         .split(":")
         .slice(1)
